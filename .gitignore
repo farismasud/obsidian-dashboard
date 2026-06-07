@@ -1,0 +1,12 @@
+# Go
+api/vendor/
+
+# Next.js
+web/.next/
+web/out/
+web/node_modules/
+web/.env*.local
+
+# OS
+.DS_Store
+Thumbs.db
