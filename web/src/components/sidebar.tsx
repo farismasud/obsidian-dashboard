@@ -17,7 +17,7 @@ const nav = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/knowledge", label: "Knowledge", icon: BookOpen },
-  { href: "/graph", label: "Graph", icon: Network },
+  { href: "/graph", label: "Graph Galaxy", icon: Network },
   { href: "/search", label: "Search", icon: Search },
 ];
 

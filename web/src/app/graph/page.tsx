@@ -23,7 +23,7 @@ export default async function GraphPage() {
         </span>
       </div>
       <div className="flex-1">
-        <GraphView data={data} />
+        <GraphView initialData={data} />
       </div>
     </div>
   );
