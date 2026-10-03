@@ -9,14 +9,16 @@ import type { GraphData, GraphNode } from "@/lib/api";
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), { ssr: false });
 
 const FOLDER_COLORS: Record<string, string> = {
-  Projects:    "#a78bfa",
-  Knowledge:   "#22d3ee",
-  Journal:     "#fbbf24",
-  Claude:      "#34d399",
-  Gemini:      "#60a5fa",
-  Antigravity: "#fb7185",
-  Inbox:       "#94a3b8",
-  root:        "#64748b",
+  Projects:     "#a78bfa",
+  Knowledge:    "#22d3ee",
+  Orchestrator: "#f43f5e",
+  Journal:      "#fbbf24",
+  Claude:       "#34d399",
+  Gemini:       "#60a5fa",
+  Antigravity:  "#fb7185",
+  Hermes:       "#ec4899",
+  Inbox:        "#94a3b8",
+  root:         "#64748b",
 };
 
 function folderColor(folder: string): string {
@@ -209,24 +211,27 @@ export function GraphView({ data }: { data: GraphData }) {
         ctx.stroke();
       }
 
-      // Label
-      const fontSize = Math.max(8.5, 10.5 / globalScale);
-      ctx.font = `${fontSize}px system-ui, sans-serif`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "top";
-      const label = n.title.length > 18 ? n.title.slice(0, 16) + "…" : n.title;
+      // Label — only draw when hovered or when zoomed in sufficiently to avoid label clutter
+      const showLabel = isHovered || globalScale > 1.2;
+      if (showLabel) {
+        const fontSize = Math.max(9, 12 / globalScale);
+        ctx.font = `${isHovered ? "bold " : ""}${fontSize}px system-ui, sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
+        const label = isHovered ? n.title : n.title.length > 20 ? n.title.slice(0, 18) + "…" : n.title;
 
-      if (dark) {
-        // subtle text shadow for readability
-        ctx.fillStyle = "rgba(0,0,0,0.6)";
-        ctx.fillText(label, n.x + 0.5, n.y + r + 3.5);
-        ctx.fillStyle = "rgba(220,235,255,0.85)";
-        ctx.fillText(label, n.x, n.y + r + 3);
-      } else {
-        ctx.fillStyle = "rgba(255,255,255,0.8)";
-        ctx.fillText(label, n.x + 0.5, n.y + r + 3.5);
-        ctx.fillStyle = "rgba(15,23,42,0.85)";
-        ctx.fillText(label, n.x, n.y + r + 3);
+        if (dark) {
+          // subtle text shadow for readability
+          ctx.fillStyle = "rgba(0,0,0,0.8)";
+          ctx.fillText(label, n.x + 0.5, n.y + r + 3.5);
+          ctx.fillStyle = isHovered ? "#ffffff" : "rgba(220,235,255,0.85)";
+          ctx.fillText(label, n.x, n.y + r + 3);
+        } else {
+          ctx.fillStyle = "rgba(255,255,255,0.8)";
+          ctx.fillText(label, n.x + 0.5, n.y + r + 3.5);
+          ctx.fillStyle = isHovered ? "#000000" : "rgba(15,23,42,0.85)";
+          ctx.fillText(label, n.x, n.y + r + 3);
+        }
       }
 
       ctx.restore();

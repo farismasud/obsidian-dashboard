@@ -58,6 +58,10 @@ func (v *Vault) Load() error {
 		if info.IsDir() && strings.HasPrefix(info.Name(), ".") {
 			return filepath.SkipDir
 		}
+		// Ignore internal graphify-out folder and backup caches to prevent polluting dashboard stats & graph
+		if info.IsDir() && (info.Name() == "graphify-out" || info.Name() == ".trash") {
+			return filepath.SkipDir
+		}
 		if !info.IsDir() && strings.HasSuffix(path, ".md") {
 			relPath, _ := filepath.Rel(v.VaultPath, path)
 			note, parseErr := v.parseFile(path, relPath, info.ModTime())

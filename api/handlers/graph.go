@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 	"path/filepath"
+	"strings"
 
 	"obsidian-dashboard/parser"
 
@@ -78,8 +79,8 @@ func topFolder(folder string) string {
 	if folder == "root" || folder == "." {
 		return "root"
 	}
-	parts := filepath.SplitList(folder)
-	if len(parts) > 0 {
+	parts := strings.Split(filepath.ToSlash(folder), "/")
+	if len(parts) > 0 && parts[0] != "" {
 		return parts[0]
 	}
 	return folder
