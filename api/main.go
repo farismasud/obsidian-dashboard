@@ -1,8 +1,13 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"log"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,18 +15,48 @@ import (
 
 	"obsidian-dashboard/handlers"
 	"obsidian-dashboard/parser"
+	"obsidian-dashboard/server"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/gin-gonic/gin"
 )
 
-func main() {
-	home, _ := os.UserHomeDir()
-	vaultPath := filepath.Join(home, "Documents", "Obsidian Vault")
-
-	if v := os.Getenv("VAULT_PATH"); v != "" {
-		vaultPath = v
+func env(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
 	}
+	return def
+}
+
+func main() {
+	if len(os.Args) > 1 && os.Args[1] == "hash-password" {
+		line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+		pw := strings.TrimRight(line, "\r\n")
+		if len(pw) < 12 {
+			log.Fatal("password must be at least 12 characters")
+		}
+		h, err := server.HashPassword(pw)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println(string(h))
+		return
+	}
+
+	home, _ := os.UserHomeDir()
+	vaultPath := env("VAULT_PATH", filepath.Join(home, "Documents", "Obsidian Vault"))
+	addr := env("ADDR", "127.0.0.1:8080")
+	internalAddr := env("INTERNAL_ADDR", "127.0.0.1:8081")
+	nextURL, err := url.Parse(env("NEXT_URL", "http://127.0.0.1:3000"))
+	if err != nil {
+		log.Fatalf("NEXT_URL: %v", err)
+	}
+
+	hashFile := os.Getenv("DASH_PASS_HASH_FILE")
+	hash, err := os.ReadFile(hashFile)
+	if hashFile == "" || err != nil || len(bytes.TrimSpace(hash)) == 0 {
+		log.Fatalf("auth: DASH_PASS_HASH_FILE must point to a bcrypt hash (create one with `obsidian-dashboard-api hash-password`): %v", err)
+	}
+	auth := server.NewAuth(env("DASH_USER", "faris"), bytes.TrimSpace(hash))
 
 	log.Printf("Loading vault: %s", vaultPath)
 	vault := parser.NewVault(vaultPath)
@@ -31,40 +66,15 @@ func main() {
 	log.Printf("Loaded %d notes", len(vault.Notes))
 
 	hub := handlers.NewHub()
-
-	// Watch vault for changes
 	go watchVault(vaultPath, vault, hub)
 
-	r := gin.Default()
-
-	// CORS for Next.js dev
-	r.Use(func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", "http://localhost:3000")
-		c.Header("Access-Control-Allow-Methods", "GET, OPTIONS")
-		c.Header("Access-Control-Allow-Headers", "Content-Type")
-		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(204)
-			return
-		}
-		c.Next()
-	})
-
-	api := r.Group("/api")
-	{
-		api.GET("/notes", handlers.GetNotes(vault))
-		api.GET("/note/*path", handlers.GetNote(vault))
-		api.GET("/projects", handlers.GetProjects(vault))
-		api.GET("/graph", handlers.GetGraph(vault))
-		api.GET("/search", handlers.Search(vault))
-		api.GET("/stats", handlers.GetStats(vault))
-	}
-
-	r.GET("/ws", hub.Handler())
-
-	log.Println("API running on :8080")
-	if err := r.Run(":8080"); err != nil {
-		log.Fatal(err)
-	}
+	api := server.APIEngine(vault, hub)
+	go func() {
+		log.Printf("Internal API (no auth, loopback only) on %s", internalAddr)
+		log.Fatal(http.ListenAndServe(internalAddr, api))
+	}()
+	log.Printf("Public entry (auth) on %s → Next.js %s", addr, nextURL)
+	log.Fatal(http.ListenAndServe(addr, server.Public(api, nextURL, auth)))
 }
 
 func watchVault(vaultPath string, vault *parser.Vault, hub *handlers.Hub) {
@@ -75,18 +85,34 @@ func watchVault(vaultPath string, vault *parser.Vault, hub *handlers.Hub) {
 	}
 	defer watcher.Close()
 
-	// Watch vault directory recursively
-	_ = filepath.Walk(vaultPath, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
+	addTree := func(root string) {
+		_ = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return nil
+			}
+			if info.IsDir() {
+				if strings.HasPrefix(info.Name(), ".") {
+					return filepath.SkipDir
+				}
+				_ = watcher.Add(path)
+			}
 			return nil
-		}
-		if info.IsDir() && !strings.HasPrefix(info.Name(), ".") {
-			_ = watcher.Add(path)
-		}
-		return nil
-	})
+		})
+	}
+	addTree(vaultPath)
 
 	debounce := make(map[string]*time.Timer)
+	reload := func(path string) {
+		if t, ok := debounce[path]; ok {
+			t.Stop()
+		}
+		debounce[path] = time.AfterFunc(300*time.Millisecond, func() {
+			vault.ReloadFile(path)
+			msg, _ := json.Marshal(map[string]string{"type": "reload", "path": path})
+			hub.Broadcast(msg)
+			log.Printf("Reloaded: %s", path)
+		})
+	}
 
 	for {
 		select {
@@ -94,25 +120,22 @@ func watchVault(vaultPath string, vault *parser.Vault, hub *handlers.Hub) {
 			if !ok {
 				return
 			}
-			if !strings.HasSuffix(event.Name, ".md") {
-				continue
+			// New folders (e.g. Research/<topic>/ created by agents) must be watched too.
+			if event.Has(fsnotify.Create) {
+				if info, err := os.Stat(event.Name); err == nil && info.IsDir() && !strings.HasPrefix(info.Name(), ".") {
+					addTree(event.Name)
+					_ = filepath.Walk(event.Name, func(p string, fi os.FileInfo, err error) error {
+						if err == nil && !fi.IsDir() && strings.HasSuffix(p, ".md") {
+							reload(p)
+						}
+						return nil
+					})
+					continue
+				}
 			}
-
-			// Debounce 300ms per file
-			if t, exists := debounce[event.Name]; exists {
-				t.Stop()
+			if strings.HasSuffix(event.Name, ".md") {
+				reload(event.Name)
 			}
-			path := event.Name
-			debounce[path] = time.AfterFunc(300*time.Millisecond, func() {
-				vault.ReloadFile(path)
-				msg, _ := json.Marshal(map[string]string{
-					"type": "reload",
-					"path": path,
-				})
-				hub.Broadcast(msg)
-				log.Printf("Reloaded: %s", path)
-			})
-
 		case err, ok := <-watcher.Errors:
 			if !ok {
 				return
