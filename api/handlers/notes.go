@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"obsidian-dashboard/parser"
 
@@ -50,7 +51,7 @@ func toResponse(n *parser.Note) NoteResponse {
 		Links:       links,
 		Backlinks:   backlinks,
 		Frontmatter: n.Frontmatter,
-		ModTime:     n.ModTime.Format("2006-01-02T15:04:05Z"),
+		ModTime:     n.ModTime.UTC().Format(time.RFC3339),
 		Excerpt:     n.Excerpt,
 	}
 }
@@ -127,7 +128,7 @@ func GetStats(vault *parser.Vault) gin.HandlerFunc {
 		var lastMod string
 		for _, n := range notes {
 			folders[n.Folder]++
-			t := n.ModTime.Format("2006-01-02T15:04:05Z")
+			t := n.ModTime.UTC().Format(time.RFC3339)
 			if t > lastMod {
 				lastMod = t
 			}

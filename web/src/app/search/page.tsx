@@ -28,7 +28,7 @@ export default async function SearchPage({
 
   return (
     <div className="p-6 max-w-3xl mx-auto">
-      <div className="mb-7">
+      <div className="mb-7 animate-enter">
         <h1 className="text-2xl font-bold tracking-tight">Search</h1>
         <p className="text-sm text-muted-foreground mt-0.5">Full-text search across vault</p>
       </div>
@@ -43,9 +43,14 @@ export default async function SearchPage({
           </div>
         )}
 
-        {results.map((note) => (
-          <Link key={note.path} href={`/knowledge?note=${encodeURIComponent(note.path)}`}>
-            <Card className="border-border/50 hover:border-primary/30 hover:bg-accent/20 transition-all cursor-pointer group">
+        {results.map((note, i) => (
+          <Link
+            key={note.path}
+            href={`/knowledge?note=${encodeURIComponent(note.path)}`}
+            className="animate-enter block"
+            style={{ "--i": i } as React.CSSProperties}
+          >
+            <Card className="surface hover-lift cursor-pointer group">
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-start justify-between gap-2 mb-1.5">
                   <p className="text-sm font-medium group-hover:text-primary transition-colors">

@@ -1,4 +1,5 @@
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
+// Server components call the loopback-only internal API; the browser uses same-origin relative URLs.
+const BASE = typeof window === "undefined" ? (process.env.API_URL ?? "http://127.0.0.1:8081") : "";
 
 export interface Note {
   path: string;
@@ -22,6 +23,7 @@ export interface GraphNode {
   title: string;
   folder: string;
   group: string;
+  link_count?: number;
 }
 
 export interface GraphLink {
@@ -32,6 +34,11 @@ export interface GraphLink {
 export interface GraphData {
   nodes: GraphNode[];
   links: GraphLink[];
+}
+
+export interface GraphifyInfo {
+  available: boolean;
+  communities: Record<string, { id: number; label: string }>;
 }
 
 export interface Stats {
@@ -50,10 +57,11 @@ async function get<T>(path: string): Promise<T> {
 
 export const api = {
   notes: (folder?: string) =>
-    get<Note[]>(`/api/notes${folder ? `?folder=${encodeURIComponent(folder)}` : ""}`),
+    get<Note[] | null>(`/api/notes${folder ? `?folder=${encodeURIComponent(folder)}` : ""}`).then((r) => r ?? []),
   note: (path: string) => get<NoteDetail>(`/api/note/${encodeURIComponent(path)}`),
-  projects: () => get<Note[]>("/api/projects"),
+  projects: () => get<Note[] | null>("/api/projects").then((r) => r ?? []),
   graph: () => get<GraphData>("/api/graph"),
-  search: (q: string) => get<Note[]>(`/api/search?q=${encodeURIComponent(q)}`),
+  graphify: () => get<GraphifyInfo>("/api/graphify"),
+  search: (q: string) => get<Note[] | null>(`/api/search?q=${encodeURIComponent(q)}`).then((r) => r ?? []),
   stats: () => get<Stats>("/api/stats"),
 };

@@ -1,148 +1,119 @@
-import { api, type Note, type Stats } from "@/lib/api";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { FileText, FolderKanban, Clock, TrendingUp } from "lucide-react";
 import Link from "next/link";
+import { ArrowUpRight, Clock, FileText, FolderTree, Link2 } from "lucide-react";
+import { api, type GraphData, type Note, type Stats } from "@/lib/api";
+import { CountUp } from "@/components/count-up";
+import { ActivityHeatmap } from "@/components/activity-heatmap";
+import { ApiOffline } from "@/components/api-offline";
+import { folderColor, topFolder } from "@/app/graph/graph-colors";
+import { relativeTime } from "@/lib/format";
 
-function formatDate(iso: string) {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-function StatCard({
-  icon: Icon,
-  label,
-  value,
-  sub,
-}: {
-  icon: React.ElementType;
-  label: string;
-  value: string | number;
-  sub?: string;
-}) {
+function StatCard({ icon: Icon, label, children, i, tint }: { icon: React.ElementType; label: string; children: React.ReactNode; i: number; tint: string }) {
   return (
-    <Card className="border-border/50">
-      <CardContent className="pt-5 pb-5">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-xs text-muted-foreground mb-1">{label}</p>
-            <p className="text-2xl font-bold">{value}</p>
-            {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
-          </div>
-          <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
-            <Icon size={18} className="text-primary" />
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+    <div className="surface hover-lift animate-enter p-5" style={{ "--i": i } as React.CSSProperties}>
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-medium text-muted-foreground">{label}</p>
+        <span className="grid size-8 place-items-center rounded-lg" style={{ background: `${tint}1f`, color: tint }}>
+          <Icon size={16} />
+        </span>
+      </div>
+      <p className="mt-3 text-3xl font-semibold tracking-tight">{children}</p>
+    </div>
   );
 }
 
-function NoteCard({ note }: { note: Note }) {
+function NoteCard({ note, i }: { note: Note; i: number }) {
+  const color = folderColor(note.folder);
   return (
-    <Link href={`/knowledge?note=${encodeURIComponent(note.path)}`}>
-      <Card className="border-border/50 hover:border-primary/30 hover:bg-accent/30 transition-all cursor-pointer group">
-        <CardContent className="pt-4 pb-4">
-          <div className="flex items-start justify-between gap-2 mb-2">
-            <p className="text-sm font-medium group-hover:text-primary transition-colors line-clamp-1">
-              {note.title}
-            </p>
-            <Badge variant="outline" className="text-xs shrink-0 capitalize">
-              {note.folder === "root" ? "vault" : note.folder.split("/")[0]}
-            </Badge>
-          </div>
-          <p className="text-xs text-muted-foreground line-clamp-2">{note.excerpt}</p>
-          <p className="text-xs text-muted-foreground/60 mt-2">{formatDate(note.mod_time)}</p>
-        </CardContent>
-      </Card>
+    <Link
+      href={`/knowledge?note=${encodeURIComponent(note.path)}`}
+      className="surface hover-lift animate-enter group block p-4"
+      style={{ "--i": i } as React.CSSProperties}
+    >
+      <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+        <span className="size-2 rounded-full" style={{ background: color, boxShadow: `0 0 8px ${color}` }} />
+        <span className="truncate">{note.folder === "root" ? "vault" : note.folder.replaceAll("\\", "/")}</span>
+        <span className="ml-auto shrink-0">{relativeTime(note.mod_time)}</span>
+      </div>
+      <p className="mt-2 line-clamp-1 font-medium transition-colors group-hover:text-primary">{note.title}</p>
+      <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{note.excerpt}</p>
     </Link>
   );
 }
 
 export default async function DashboardPage() {
-  let stats: Stats | null = null;
-
+  let stats: Stats;
+  let notes: Note[];
+  let graph: GraphData;
   try {
-    stats = await api.stats();
+    [stats, notes, graph] = await Promise.all([api.stats(), api.notes(), api.graph()]);
   } catch {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center space-y-2">
-          <p className="text-muted-foreground text-sm">Cannot connect to API</p>
-          <p className="text-xs text-muted-foreground/60">
-            Run: <code className="bg-muted px-1.5 py-0.5 rounded">cd api && go run main.go</code>
-          </p>
-        </div>
-      </div>
-    );
+    return <ApiOffline />;
   }
 
-  const folderList = Object.entries(stats.folders)
-    .sort((a, b) => b[1] - a[1])
-    .filter(([f]) => f !== "root");
+  const folders = Object.entries(stats.folders)
+    .map(([f, n]) => [topFolder(f), n] as const)
+    .reduce((m, [f, n]) => m.set(f, (m.get(f) ?? 0) + n), new Map<string, number>());
+  const folderList = [...folders.entries()].sort((a, b) => b[1] - a[1]);
+  const maxFolder = Math.max(1, ...folderList.map(([, n]) => n));
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
-      {/* Header */}
-      <div className="mb-7">
-        <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Last updated {formatDate(stats.last_modified)}
-        </p>
-      </div>
+    <div className="mx-auto max-w-6xl p-8">
+      <header className="animate-enter mb-8 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-[0.18em] text-primary">rnd-agent · Second Brain</p>
+          <h1 className="mt-1.5 text-3xl font-semibold tracking-tight">Dashboard</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Last activity {relativeTime(stats.last_modified)}</p>
+        </div>
+        <Link
+          href="/graph"
+          className="group inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/25 transition-transform hover:-translate-y-0.5 active:scale-[0.98]"
+        >
+          Open Graph Galaxy
+          <ArrowUpRight size={16} className="transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+        </Link>
+      </header>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-7">
-        <StatCard icon={FileText} label="Total Notes" value={stats.total_notes} />
-        <StatCard icon={FolderKanban} label="Projects" value={stats.project_count} />
-        <StatCard icon={TrendingUp} label="Folders" value={folderList.length} />
-        <StatCard
-          icon={Clock}
-          label="Last Modified"
-          value={formatDate(stats.last_modified).split(",")[0]}
-        />
-      </div>
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <StatCard i={0} icon={FileText} label="Notes" tint="#a78bfa"><CountUp value={stats.total_notes} /></StatCard>
+        <StatCard i={1} icon={Link2} label="Connections" tint="#22d3ee"><CountUp value={graph.links.length} /></StatCard>
+        <StatCard i={2} icon={FolderTree} label="Folders" tint="#f472b6"><CountUp value={folderList.length} /></StatCard>
+        <StatCard i={3} icon={Clock} label="Last activity" tint="#34d399">
+          <span className="text-xl">{relativeTime(stats.last_modified)}</span>
+        </StatCard>
+      </section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Recent Notes */}
-        <div className="lg:col-span-2 space-y-3">
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-            Recent Notes
-          </h2>
-          {stats.recent_notes.map((note) => (
-            <NoteCard key={note.path} note={note} />
+      <section className="mt-6 grid gap-4 lg:grid-cols-3">
+        <div className="surface animate-enter p-5 lg:col-span-2" style={{ "--i": 4 } as React.CSSProperties}>
+          <h2 className="mb-4 text-sm font-medium">Activity</h2>
+          <ActivityHeatmap dates={notes.map((n) => n.mod_time)} />
+        </div>
+        <div className="surface animate-enter p-5" style={{ "--i": 5 } as React.CSSProperties}>
+          <h2 className="mb-4 text-sm font-medium">Folders</h2>
+          <ul className="space-y-3">
+            {folderList.map(([folder, count]) => (
+              <li key={folder}>
+                <div className="mb-1 flex justify-between text-xs">
+                  <span className="capitalize">{folder === "root" ? "vault" : folder}</span>
+                  <span className="tabular-nums text-muted-foreground">{count}</span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                  <div className="h-full rounded-full" style={{ width: `${(count / maxFolder) * 100}%`, background: folderColor(folder) }} />
+                </div>
+              </li>
+            ))}
+            {folderList.length === 0 && <li className="text-xs text-muted-foreground">No folders yet</li>}
+          </ul>
+        </div>
+      </section>
+
+      <section className="mt-8">
+        <h2 className="animate-enter mb-3 text-sm font-medium" style={{ "--i": 6 } as React.CSSProperties}>Recent notes</h2>
+        <div className="grid gap-3 md:grid-cols-2">
+          {stats.recent_notes.map((note, i) => (
+            <NoteCard key={note.path} note={note} i={i + 7} />
           ))}
         </div>
-
-        {/* Folders */}
-        <div className="space-y-3">
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-            Folders
-          </h2>
-          <Card className="border-border/50">
-            <CardContent className="pt-4 pb-4 space-y-3">
-              {folderList.map(([folder, count]) => (
-                <div key={folder} className="flex items-center justify-between">
-                  <span className="text-sm capitalize">{folder}</span>
-                  <div className="flex items-center gap-2">
-                    <div className="h-1.5 rounded-full bg-primary/20 w-16 overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-primary"
-                        style={{ width: `${(count / stats.total_notes) * 100}%` }}
-                      />
-                    </div>
-                    <span className="text-xs text-muted-foreground w-4 text-right">{count}</span>
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      </section>
     </div>
   );
 }

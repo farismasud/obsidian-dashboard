@@ -28,7 +28,7 @@ and a redesigned, animated UI.
 
 ## 2. Graph Galaxy
 - Toggle **2D / 3D**, remembered in `localStorage`.
-- **3D** (`react-force-graph-3d`): slow auto-rotate that pauses on user interaction, bloom glow,
+- **3D** (`react-force-graph-3d`): slow auto-rotate that pauses on user interaction, glow via additive sprites (post-processing bloom washed out the alpha canvas),
   directional particles along links, camera fly-to on node click, distance fog.
 - **2D** (`react-force-graph-2d`): screen-space starfield with twinkle (not affected by pan/zoom),
   subtle node pulse, link particles, hover highlights neighbors and dims the rest,

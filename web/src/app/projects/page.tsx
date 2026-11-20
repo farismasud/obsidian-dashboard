@@ -9,10 +9,14 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
-function ProjectCard({ note }: { note: Note }) {
+function ProjectCard({ note, i }: { note: Note; i: number }) {
   return (
-    <Link href={`/knowledge?note=${encodeURIComponent(note.path)}`}>
-      <Card className="border-border/50 hover:border-primary/30 hover:bg-accent/20 transition-all cursor-pointer group h-full">
+    <Link
+      href={`/knowledge?note=${encodeURIComponent(note.path)}`}
+      className="animate-enter block"
+      style={{ "--i": i } as React.CSSProperties}
+    >
+      <Card className="surface hover-lift cursor-pointer group h-full">
         <CardContent className="pt-5 pb-5 h-full flex flex-col">
           <div className="flex items-start justify-between gap-2 mb-3">
             <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
@@ -64,8 +68,8 @@ export default async function ProjectsPage() {
   }
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
-      <div className="mb-7">
+    <div className="p-8 max-w-6xl mx-auto">
+      <div className="mb-7 animate-enter">
         <h1 className="text-2xl font-bold tracking-tight">Projects</h1>
         <p className="text-sm text-muted-foreground mt-0.5">{projects.length} projects in vault</p>
       </div>
@@ -74,8 +78,8 @@ export default async function ProjectsPage() {
         <p className="text-muted-foreground text-sm">No notes found in Projects/ folder.</p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {projects.map((p) => (
-            <ProjectCard key={p.path} note={p} />
+          {projects.map((p, i) => (
+            <ProjectCard key={p.path} note={p} i={i} />
           ))}
         </div>
       )}
